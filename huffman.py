@@ -1,6 +1,6 @@
 import math
 
-from bitStream import BitStream
+from BitStream.bitStream import BitStream
 
 def numToBytearray(num):
     result = bytearray()
