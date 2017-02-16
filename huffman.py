@@ -1,6 +1,6 @@
 import math
 
-from bitStream import BitStream
+from BitStream.bitStream import BitStream
 
 def numToBytearray(num):
     result = bytearray()
@@ -173,7 +173,7 @@ def huffmanTreeToDict(hTree):
     return d
 
 
-from freqCounter import FreqCounter
+from FrequencyCounter.freqCounter import FreqCounter
 
 def encode(string):
     fc = FreqCounter(string, 1)
