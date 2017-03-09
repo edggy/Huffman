@@ -174,11 +174,48 @@ def bitStreamToTree(stream, dataLength = None):
     
 
 
-def huffmanTree(freqMap):
+def huffmanTree(freqMap, eps = 0):
     queue = Queue.PriorityQueue()
+    sums = [0.0]
+    sumsSquared = [0.0]
+    counts = [0.0]
+    for key, count in freqMap.items():
+        #print key, count
+        try:
+            sums[len(key)] += count
+            sumsSquared[len(key)] += count**2
+            counts[len(key)] += 1
+        except IndexError:
+            while len(sums) <= len(key):
+                sums.append(0.0)
+                sumsSquared.append(0.0)
+                counts.append(0.0)
+            sums[len(key)] += count
+            sumsSquared[len(key)] += count**2
+            counts[len(key)] += 1   
+            
+    #import operator
+    #sorted_x = sorted(freqMap.items(), key=operator.itemgetter(1), reverse=True)
+    #print sorted_x
+    
+    #print counts, sums, sumsSquared
+    
+    averages = []
+    variance = []
+    for c, s, ss in zip(counts, sums, sumsSquared):
+        try:
+            averages.append(s/c)
+            variance.append(ss/c - (s/c)**2)
+        except ZeroDivisionError:
+            averages.append(0)
+            variance.append(0)            
+    stdev = map(math.sqrt, variance)
+    
+    #print averages, stdev
     for key, count in freqMap.items():
         #print (count, key)
-        queue.put((count, BinaryTree(key)))
+        if len(key) <= 1 or count >= math.ceil(averages[len(key)] + eps*stdev[len(key)]):
+            queue.put((count, BinaryTree(key)))
         
     while queue.qsize() > 1:
         left, right = queue.get(), queue.get()
@@ -208,24 +245,39 @@ def huffmanTreeToDict(hTree):
         dp[d[key]] = key
     return d, dp
 
-def encode(string):
+def encode(string, length = 1, eps = 0):
     '''
     Takes a string and compresses it using Huffman Encoding
     
     @param string - Input to compress
     @return - A BitStream of the tree followed by the compressed data
     '''
-    fc = FreqCounter(string, 1)
-    ht = huffmanTree(fc.data)
-    print 'encode: %s' % ht
+    fc = FreqCounter(string, length)
+    ht = huffmanTree(fc.data, eps)
+    #print 'encode: %s' % ht
     d, dp = huffmanTreeToDict(ht)
-    print 'encode: %s' % d
+    #print 'encode: %s' % d
     stream = BitStream()
     ht.toStream(stream)
-    print len(stream)
+    #print len(stream)
+    i = 0
+    while i < len(string):
+        for l in range(length, 0, -1):
+            tok = tuple(string[i:i+l])
+            #print 'tok:', tok,
+            if tok in d:
+                #print d[tok]
+                stream += d[tok]
+                i += len(tok)
+                break
+            #else:
+            #    print
+        
+    '''
     for c in string:
         stream += d[(c,)]
-    print len(stream)
+    '''
+    #print len(stream)
     return stream
 
 def decode(stream):
@@ -235,8 +287,8 @@ def decode(stream):
     
     ht = bitStreamToTree(stream)
     d, dp = huffmanTreeToDict(ht)
-    print dp
-    print len(stream)
+    #print dp
+    #print len(stream)
     #output = BitStream()
     output = ''
     tok = BitStream()
@@ -244,12 +296,16 @@ def decode(stream):
         tok.push(b)
         if tok in dp:
             #output.push(dp[tok])
+            #print tok, dp[tok]
             data = copy.copy(dp[tok])
+            
             while len(data) > 0:
                 dataPart = BitStream()
                 for i in xrange(8):
                     dataPart += data.pop()
-                output += chr(int(dataPart))
+                char = chr(int(dataPart))
+                if char != '\x00':
+                    output += char
             tok = BitStream()
     return output
     
@@ -268,7 +324,7 @@ if __name__ == '__main__':
         
     print 
     
-    ht = huffmanTree({'or':1, 'not':1, 'and':1, 'A':1, 'B':1, 'C':1, 0:3, 1:1, 2:2})
+    ht = huffmanTree({('or',):1, ('not',):1, ('and',):1, ('A',):1, ('B',):1, ('C',):1, (0,):3, (1,):1, (2,):2})
     stream = BitStream()
     ht.toStream(stream)
     print ht
@@ -284,10 +340,28 @@ if __name__ == '__main__':
     with open(filename, mode='rb') as f:
         inputData = f.read()
         
-    inputSize = len(inputData)*8
-    stream3 = encode(inputData)
-    outputSize = len(stream3)
-    #print stream3
-    print 'Compressed from %d to %d bits. A factor of %f%%' % (inputSize, outputSize, 100.0*outputSize/inputSize)
+    delta = 1.0
+    eps = 5.0
+    besteps = 15.0
+    bestResult = len(inputData)*8.0
     
-    print decode(stream3)
+    cache = {}
+    
+    while abs(eps - besteps) > 0.001:
+        if eps not in cache:
+            inputSize = len(inputData)*8.0
+            stream3 = encode(inputData, 20, eps)
+            outputSize = len(stream3)
+            result = 1.0 - outputSize/inputSize
+            cache[eps] = outputSize
+            print 'Compressed from %d to %d bits. A factor of %f%% using eps = %f, delta = %f' % (inputSize, outputSize, 100.0*result, eps, delta)
+        
+        if cache[eps] < bestResult:
+            eps, besteps, bestResult, delta = eps + delta, eps, cache[eps], (besteps - eps) / 2
+        else:
+            eps = (eps + besteps) / 2
+    
+    import operator
+    sorted_x = sorted(cache.items(), key=operator.itemgetter(1), reverse=False)
+    print sorted_x    
+    #print decode(stream3)
